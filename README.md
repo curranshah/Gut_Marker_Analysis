@@ -1,6 +1,6 @@
 # Gut Marker Analysis
 
-A pipeline for extracting marker genes from single-cell RNA-seq (scRNA-seq) data using a Variational Autoencoder (VAE). Developed for analyzing human gut tissue datasets (fetal, pediatric, and adult).
+A pipeline for extracting marker genes from single-cell RNA-seq (scRNA-seq) data using a Variational Autoencoder (VAE). Developed for analyzing human gut tissue datasets (fetal, pediatric, and adult).  Using data from Elmentiate et al., 2021 Cells of the human intestinal tract mapped across space and time
 
 ## Overview
 
