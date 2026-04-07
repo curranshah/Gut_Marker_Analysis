@@ -25,7 +25,6 @@ Override key hyperparameters:
 
 import argparse
 import os
-import shutil
 import sys
 import json
 import pickle
@@ -43,6 +42,7 @@ from src.training.train_vae import train_vae, embed_adata
 from src.analysis.marker_genes import decoder_probing, markers_to_dataframe, summarise_latent_dims
 from src.analysis.embedding_analysis import compare_vae_pca_clustering
 from src.analysis.dge import run_cluster_dge
+from src.preprocessing.gene_lists import GUT_CELL_TYPE_MARKERS, PBMC_CELL_TYPE_MARKERS
 
 
 # ---------------------------------------------------------------------------
@@ -50,9 +50,23 @@ from src.analysis.dge import run_cluster_dge
 # ---------------------------------------------------------------------------
 
 DATASETS = {
+    "pbmc":      "pbmc_3k/pbmc3k_raw.h5ad",
     "fetal":     "elmentiate_2021/fetal_RAWCOUNTS_cellxgene.h5ad",
     "pediatric": "elmentiate_2021/pediatric_RAWCOUNTS_cellxgene_c.h5ad",
     "full":      "elmentiate_2021/Full_obj_raw_counts_nosoupx_v2.h5ad",
+}
+
+# Default tissue type per dataset (used to select cell-type marker set)
+DATASET_TISSUE = {
+    "pbmc":      "pbmc",
+    "fetal":     "gut",
+    "pediatric": "gut",
+    "full":      "gut",
+}
+
+TISSUE_MARKERS = {
+    "gut":  GUT_CELL_TYPE_MARKERS,
+    "pbmc": PBMC_CELL_TYPE_MARKERS,
 }
 
 
@@ -121,6 +135,15 @@ def parse_args():
     parser.add_argument("--skip_clustering", action="store_true",
                         help="Skip the VAE vs PCA clustering comparison step")
 
+    # Tissue / cell-type marker set
+    parser.add_argument(
+        "--tissue",
+        choices=list(TISSUE_MARKERS.keys()),
+        default=None,
+        help="Cell-type marker set to use for cluster annotation. "
+             "Auto-selected from dataset if omitted (gut datasets → 'gut', pbmc → 'pbmc').",
+    )
+
     # DGE + cell-type annotation
     parser.add_argument("--n_dge_genes",   type=int, default=50,
                         help="Genes per cluster retained by DGE (default: 50)")
@@ -130,6 +153,113 @@ def parse_args():
                         help="Skip DGE and cell-type annotation step")
 
     return parser.parse_args()
+
+
+# ---------------------------------------------------------------------------
+# Interactive prompt (used when script is run with no CLI arguments)
+# ---------------------------------------------------------------------------
+
+def _ask(prompt: str, default, cast=str):
+    """Prompt with a default value; return default on empty input."""
+    raw = input(f"  {prompt} [{default}]: ").strip()
+    if not raw:
+        return default
+    try:
+        return cast(raw)
+    except (ValueError, TypeError):
+        print(f"    Invalid input, using default ({default})")
+        return default
+
+
+def _ask_bool(prompt: str, default: bool) -> bool:
+    hint = "Y/n" if default else "y/N"
+    raw = input(f"  {prompt} [{hint}]: ").strip().lower()
+    if not raw:
+        return default
+    return raw in ("y", "yes")
+
+
+def prompt_interactive() -> argparse.Namespace:
+    """Prompt the user for key pipeline parameters interactively."""
+    print("\n=== VAE Marker Gene Pipeline ===\n")
+
+    # --- Dataset ---
+    print("Available datasets:")
+    keys = list(DATASETS.keys())
+    for i, k in enumerate(keys, 1):
+        print(f"  [{i}] {k}")
+    while True:
+        raw = input("  Select dataset (name or number): ").strip().lower()
+        if raw in DATASETS:
+            dataset = raw
+            break
+        if raw.isdigit() and 1 <= int(raw) <= len(keys):
+            dataset = keys[int(raw) - 1]
+            break
+        print(f"    Invalid — choose from: {', '.join(keys)}")
+
+    # --- Tissue (auto-default from dataset) ---
+    default_tissue = DATASET_TISSUE.get(dataset, "gut")
+    tissue_keys = list(TISSUE_MARKERS.keys())
+    raw = input(f"  Tissue {tissue_keys} [{default_tissue}]: ").strip().lower()
+    tissue = raw if raw in TISSUE_MARKERS else default_tissue
+
+    # --- Key training params ---
+    epochs     = _ask("Max epochs",       200, int)
+    latent_dim = _ask("Latent dimensions", 32, int)
+
+    # --- Steps ---
+    skip_clustering = _ask_bool("Skip clustering + DGE?", False)
+    skip_dge        = _ask_bool("Skip DGE only?", False) if not skip_clustering else False
+
+    # All other params use defaults
+    n_hvg       = 3000
+    beta        = 1.0
+    patience    = 20
+    leiden_res  = 0.5
+    n_neighbors = 15
+    regress_sex = True
+    regress_cc  = False
+
+    return argparse.Namespace(
+        dataset=dataset,
+        out=None,
+        tissue=tissue,
+        # filtering (use defaults)
+        min_cells=3,
+        min_genes=200,
+        max_genes=6000,
+        max_mito=20.0,
+        no_filter_noncoding=False,
+        # HVG
+        n_hvg=n_hvg,
+        # VAE
+        latent_dim=latent_dim,
+        hidden_dims=[512, 256],
+        dropout=0.1,
+        # training
+        epochs=epochs,
+        batch_size=512,
+        lr=1e-3,
+        beta=beta,
+        patience=patience,
+        # confounders
+        no_regress_sex=not regress_sex,
+        regress_cell_cycle=regress_cc,
+        # marker genes
+        top_k=50,
+        probe_scale=3.0,
+        # clustering
+        n_pcs=50,
+        n_neighbors=n_neighbors,
+        leiden_res=leiden_res,
+        color_by=None,
+        skip_clustering=skip_clustering,
+        # DGE
+        n_dge_genes=50,
+        n_dot_genes=5,
+        skip_dge=skip_dge,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +299,11 @@ def select_dataset(choice: str | None) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 def main():
-    args = parse_args()
+    # If run directly with no CLI flags, use interactive prompts
+    if len(sys.argv) == 1:
+        args = prompt_interactive()
+    else:
+        args = parse_args()
 
     # 1. Dataset selection
     print("=" * 60)
@@ -177,11 +311,16 @@ def main():
     print("=" * 60)
 
     dataset_key, file_path = select_dataset(args.dataset)
+    tissue = args.tissue or DATASET_TISSUE.get(dataset_key, "gut")
+    cell_type_markers = TISSUE_MARKERS[tissue]
     print(f"\n[1/9] Dataset : {dataset_key}  ({file_path})")
+    print(f"      Tissue  : {tissue}  ({len(cell_type_markers)} cell types)")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = args.out or os.path.join(EXPERIMENTS_DIR, f"{dataset_key}_{timestamp}")
+    fig_dir = os.path.join(out_dir, "figures")
     os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(fig_dir, exist_ok=True)
     print(f"      Output  : {out_dir}")
 
     # 2. Filter and normalize
@@ -266,7 +405,7 @@ def main():
         print(f"\n[8/9] Comparing VAE vs PCA Leiden clustering ...")
         compare_vae_pca_clustering(
             adata,
-            out_dir=out_dir,
+            out_dir=fig_dir,
             n_pcs=args.n_pcs,
             n_neighbors=args.n_neighbors,
             leiden_resolution=args.leiden_res,
@@ -280,9 +419,10 @@ def main():
         print(f"\n[9/9] Running DGE and cell-type annotation ...")
         run_cluster_dge(
             adata,
-            out_dir=out_dir,
+            out_dir=fig_dir,
             n_dge_genes=args.n_dge_genes,
             n_dot_genes=args.n_dot_genes,
+            cell_type_markers=cell_type_markers,
         )
     else:
         print(f"\n[9/9] Skipping DGE (--skip_dge or --skip_clustering)")
@@ -302,19 +442,13 @@ def main():
     with open(os.path.join(out_dir, "run_config.json"), "w") as f:
         json.dump(run_config, f, indent=2)
 
-    # Copy all figures to the top-level figures/ directory
-    run_name = os.path.basename(out_dir)
-    fig_dest = os.path.join(FIGURES_DIR, run_name)
-    os.makedirs(fig_dest, exist_ok=True)
-    figure_files = sorted(f for f in os.listdir(out_dir) if f.endswith(".png"))
+    figure_files = sorted(f for f in os.listdir(fig_dir) if f.endswith(".png"))
     table_files  = sorted(f for f in os.listdir(out_dir) if f.endswith(".csv"))
-    for fname in figure_files:
-        shutil.copy2(os.path.join(out_dir, fname), os.path.join(fig_dest, fname))
 
     print(f"\n{'=' * 60}")
     print(f"  Pipeline complete.")
     print(f"  Experiment dir : {out_dir}")
-    print(f"  Figures dir    : {fig_dest}")
+    print(f"  Figures        : {fig_dir}")
     if figure_files:
         print(f"\n  Figures:")
         for fname in figure_files:

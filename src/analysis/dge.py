@@ -28,33 +28,7 @@ import pandas as pd
 import scanpy as sc
 
 
-# ---------------------------------------------------------------------------
-# Curated gut cell-type marker genes (Elmentaite et al. 2021 + literature)
-# ---------------------------------------------------------------------------
-
-GUT_CELL_TYPE_MARKERS: dict[str, list[str]] = {
-    # Epithelial
-    "Stem/TA":          ["LGR5", "OLFM4", "ASCL2", "AXIN2", "MKI67", "TOP2A", "PCNA", "SOX9"],
-    "Enterocyte":       ["FABP1", "FABP2", "ALPI", "SLC5A1", "APOA4", "APOB", "CYP3A4", "ALDOB"],
-    "Goblet":           ["MUC2", "TFF3", "CLCA1", "SPDEF", "AGR2", "FCGBP"],
-    "Enteroendocrine":  ["CHGA", "CHGB", "NEUROD1", "PAX4", "NEUROG3", "SST", "GCG"],
-    "Paneth":           ["DEFA5", "DEFA6", "LYZ", "MMP7", "ITLN2"],
-    "Tuft":             ["DCLK1", "POU2F3", "TRPM5", "PTGS1", "IL25"],
-    "M cell":           ["GP2", "SPIB", "CCL20", "MARCKS"],
-    # Stromal
-    "Fibroblast":       ["COL1A1", "COL3A1", "DCN", "LUM", "PDGFRA", "VIM"],
-    "Endothelial":      ["PECAM1", "CDH5", "VWF", "CLDN5", "ENG", "PLVAP"],
-    "Smooth muscle":    ["ACTA2", "MYH11", "TAGLN", "CNN1", "MYLK"],
-    "Pericyte":         ["RGS5", "PDGFRB", "NOTCH3", "MCAM", "ABCC9"],
-    # Immune
-    "Macrophage":       ["CD68", "LYZ", "CSF1R", "MRC1", "MARCO", "MSR1"],
-    "Dendritic cell":   ["CLEC9A", "XCR1", "ITGAX", "FCER1A", "CLEC10A"],
-    "T cell":           ["CD3D", "CD3E", "TRAC", "CD4", "CD8A", "IL7R"],
-    "B cell":           ["MS4A1", "CD79A", "CD79B", "IGHM", "BANK1"],
-    "Plasma cell":      ["MZB1", "SDC1", "IGHG1", "IGHA1", "JCHAIN", "DERL3"],
-    "NK/ILC":           ["GNLY", "NKG7", "KLRD1", "RORC", "GATA3", "EOMES"],
-    "Mast cell":        ["TPSAB1", "CPA3", "KIT", "HPGDS", "MS4A2"],
-}
+from src.preprocessing.gene_lists import GUT_CELL_TYPE_MARKERS, PBMC_CELL_TYPE_MARKERS  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -153,8 +127,15 @@ def score_and_annotate_clusters(
     for cell_type, obs_key in score_cols:
         score_matrix[cell_type] = adata.obs.groupby(groupby_key)[obs_key].mean()
 
-    # Assign each cluster the cell type with the highest mean score
     annotation_key = f"{groupby_key}_cell_type"
+
+    if score_matrix.empty:
+        print(f"[dge] Warning: no marker genes found in adata for any cell type — "
+              f"annotation will fall back to Leiden cluster labels.")
+        adata.obs[annotation_key] = adata.obs[groupby_key].copy()
+        return annotation_key, score_matrix
+
+    # Assign each cluster the cell type with the highest mean score
     cluster_labels = score_matrix.idxmax(axis=1)
     adata.obs[annotation_key] = (
         adata.obs[groupby_key].map(cluster_labels).astype("category")
@@ -309,8 +290,8 @@ def plot_annotated_umap(
     pca_annotation_key: str = "leiden_pca_cell_type",
 ) -> None:
     """
-    Side-by-side UMAP coloured by the assigned cell-type labels from the VAE
-    and PCA clusterings.
+    2×2 UMAP figure combining Leiden cluster labels (top row) and predicted
+    cell-type annotations (bottom row) for both VAE and PCA representations.
 
     :param adata: AnnData object with ``X_umap_vae``, ``X_umap_pca``, and the
         two annotation obs columns already populated
@@ -318,12 +299,17 @@ def plot_annotated_umap(
     :param vae_annotation_key: obs column with VAE cluster cell-type labels
     :param pca_annotation_key: obs column with PCA cluster cell-type labels
     """
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6), squeeze=False)
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12), squeeze=False)
 
-    _scatter_annotated(adata, axes[0, 0], "X_umap_vae", vae_annotation_key, "VAE — cell type")
-    _scatter_annotated(adata, axes[0, 1], "X_umap_pca", pca_annotation_key, "PCA — cell type")
+    # Top row — Leiden cluster numbers
+    _scatter_annotated(adata, axes[0, 0], "X_umap_vae", "leiden_vae",        "VAE — Leiden clusters")
+    _scatter_annotated(adata, axes[0, 1], "X_umap_pca", "leiden_pca",        "PCA — Leiden clusters")
 
-    fig.suptitle("Predicted cell-type annotations", fontsize=13, y=1.01)
+    # Bottom row — predicted cell types
+    _scatter_annotated(adata, axes[1, 0], "X_umap_vae", vae_annotation_key,  "VAE — cell type")
+    _scatter_annotated(adata, axes[1, 1], "X_umap_pca", pca_annotation_key,  "PCA — cell type")
+
+    fig.suptitle("Leiden clusters and predicted cell-type annotations", fontsize=13, y=1.01)
     plt.tight_layout()
 
     fpath = os.path.join(out_dir, "annotated_umap.png")
@@ -431,11 +417,23 @@ def _scatter_annotated(adata, ax, umap_key: str, color_key: str, title: str) -> 
         ax.set_visible(False)
         return
 
+    if color_key not in adata.obs.columns:
+        ax.text(0.5, 0.5, f"'{color_key}'\nnot found in adata.obs",
+                ha="center", va="center", transform=ax.transAxes, fontsize=9, color="red")
+        ax.set_title(title, fontsize=11)
+        return
+
     coords = adata.obsm[umap_key]
     values = adata.obs[color_key]
 
     categories = list(values.cat.categories) if hasattr(values, "cat") \
-        else sorted(values.unique())
+        else sorted(values.dropna().unique())
+
+    if not categories:
+        ax.text(0.5, 0.5, "No annotation\navailable",
+                ha="center", va="center", transform=ax.transAxes, fontsize=9, color="gray")
+        ax.set_title(title, fontsize=11)
+        return
 
     # Build a palette — prefer scanpy's default_102, fall back to tab20
     try:

@@ -4,8 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="824534a4-cc57-4a2d-895d-96225ee55ba8" name="Changes" comment="initial commit">
+    <list default="true" id="824534a4-cc57-4a2d-895d-96225ee55ba8" name="Changes" comment="Built out variable autoencoder to encode and decode 32 latent dimensions.  Built UMAP Leiden clustering comparison between traditional PCA and VAE embeddings.  Added DGE for marker expression for the clusters">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/run_pipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/run_pipeline.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/analysis/dge.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/analysis/dge.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/preprocessing/gene_lists.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/preprocessing/gene_lists.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -22,21 +25,21 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "curranshah"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;curranshah&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "git@github.com:curranshah/Gut_Marker_Analysis.git",
-    "accountId": "61097a2b-030c-4dc8-9e01-3a88da72ab5e"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;git@github.com:curranshah/Gut_Marker_Analysis.git&quot;,
+    &quot;accountId&quot;: &quot;61097a2b-030c-4dc8-9e01-3a88da72ab5e&quot;
   }
-}]]></component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 5
-}]]></component>
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 5
+}</component>
   <component name="ProjectId" id="3BEu6TAsJBegXG3m86xcu8S6BGg" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
@@ -45,6 +48,7 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "Python.convert_to_h5ad.executor": "Run",
     "Python.run_pipeline.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
@@ -53,12 +57,36 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/data/pbmc_3k" />
+      <recent name="$PROJECT_DIR$/data/pbmc_3k/filtered_gene_bc_matrices" />
       <recent name="$PROJECT_DIR$/src/preprocessing" />
       <recent name="$PROJECT_DIR$/data/elmentiate_2021" />
       <recent name="$PROJECT_DIR$/data" />
     </key>
   </component>
-  <component name="RunManager">
+  <component name="RunManager" selected="Python.run_pipeline">
+    <configuration name="convert_to_h5ad" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Gut_Marker_Analysis" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/scripts" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/scripts/convert_to_h5ad.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="run_pipeline" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Gut_Marker_Analysis" />
       <option name="ENV_FILES" value="" />
@@ -84,6 +112,7 @@
     <recent_temporary>
       <list>
         <item itemvalue="Python.run_pipeline" />
+        <item itemvalue="Python.convert_to_h5ad" />
       </list>
     </recent_temporary>
   </component>
@@ -127,11 +156,20 @@
       <option name="project" value="LOCAL" />
       <updated>1774137026118</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="Built out variable autoencoder to encode and decode 32 latent dimensions.  Built UMAP Leiden clustering comparison between traditional PCA and VAE embeddings.  Added DGE for marker expression for the clusters">
+      <option name="closed" value="true" />
+      <created>1774510137033</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1774510137033</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="initial commit" />
-    <option name="LAST_COMMIT_MESSAGE" value="initial commit" />
+    <MESSAGE value="Built out variable autoencoder to encode and decode 32 latent dimensions.  Built UMAP Leiden clustering comparison between traditional PCA and VAE embeddings.  Added DGE for marker expression for the clusters" />
+    <option name="LAST_COMMIT_MESSAGE" value="Built out variable autoencoder to encode and decode 32 latent dimensions.  Built UMAP Leiden clustering comparison between traditional PCA and VAE embeddings.  Added DGE for marker expression for the clusters" />
   </component>
 </project>
